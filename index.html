@@ -284,7 +284,7 @@
         createApp({
             data() {
                 return {
-                    gasUrl: 'https://script.google.com/macros/s/AKfycbxMfN2gh7udWPJnQjdUp2PYJSxIKluUZ6x8hVc7uwArVXNIpCa6LdD8w7yUiL_rVs6_ww/exec',
+                    gasUrl: 'https://script.google.com/macros/s/AKfycbyp7JQ-kbKVF1eqXJ6wMplD8ckqQez7r5aGl12_JswvTUpRsa4wblNIEXqIMlMVie6Cog/exec',
                     
                     isLoggedIn: false,
                     isSyncing: false, 
@@ -343,7 +343,7 @@
             methods: {
                 // 從 Google Sheets 抓取資料
                 fetchFromCloud() {
-                    if (!this.gasUrl || this.gasUrl === '請將您的Google Apps Script網址貼在這裡') return;
+                    if (!this.gasUrl || this.gasUrl === 'https://script.google.com/macros/s/AKfycbyp7JQ-kbKVF1eqXJ6wMplD8ckqQez7r5aGl12_JswvTUpRsa4wblNIEXqIMlMVie6Cog/exec') return;
                     
                     this.isSyncing = true;
                     fetch(this.gasUrl)
@@ -366,7 +366,9 @@
                 
                 // 將資料存入 Google Sheets
                 saveToCloud() {
-                    if (!this.gasUrl || this.gasUrl === '請將您的Google Apps Script網址貼在這裡') {
+                    if (!this.gasUrl || this.gasUrl === 'https://script.google.com/macros/s/AKfycbyp7JQ-kbKVF1eqXJ6wMplD8ckqQez7r5aGl12_JswvTUpRsa4wblNIEXqIMlMVie6Cog/exec
+        
+                ') {
                         alert('請先在原始碼中設定好 Google Apps Script 網址！');
                         return;
                     }
