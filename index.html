@@ -365,13 +365,11 @@
                 },
                 
                 // 將資料存入 Google Sheets
-                saveToCloud() {
-                    if (!this.gasUrl || this.gasUrl === 'https://script.google.com/macros/s/AKfycbyp7JQ-kbKVF1eqXJ6wMplD8ckqQez7r5aGl12_JswvTUpRsa4wblNIEXqIMlMVie6Cog/exec
-        
-                ') {
-                        alert('請先在原始碼中設定好 Google Apps Script 網址！');
-                        return;
-                    }
+               saveToCloud() {
+    if (!this.gasUrl || this.gasUrl === 'https://script.google.com/macros/s/AKfycbyp7JQ-kbKVF1eqXJ6wMplD8ckqQez7r5aGl12_JswvTUpRsa4wblNIEXqIMlMVie6Cog/exec') {
+        alert('請先在原始碼中設定好 Google Apps Script 網址！');
+        return;
+    }
 
                     this.isSyncing = true;
                     fetch(this.gasUrl, {
