@@ -47,8 +47,43 @@
             </div>
         </div>
 
+        <!-- 批量貼上 Excel 資料 Modal 畫面 -->
+        <div v-if="showPasteModal" class="absolute inset-0 z-50 flex items-center justify-center bg-gray-900 bg-opacity-60 backdrop-blur-sm rounded-lg p-4">
+            <div class="bg-white p-6 rounded-xl shadow-2xl w-[900px] max-w-full flex flex-col h-[85%]">
+                <div class="flex justify-between items-center mb-2">
+                    <h2 class="text-2xl font-bold text-gray-800">📋 批量貼上 Excel 資料</h2>
+                    <button @click="closePasteModal" class="text-gray-500 hover:text-gray-800 text-3xl font-bold focus:outline-none">&times;</button>
+                </div>
+                <p class="text-sm text-gray-600 mb-3">
+                    請從 Excel 中複製範圍 (Ctrl+C)，並在下方框內點擊後「貼上 (Ctrl+V)」。<br>
+                    <span class="text-red-500 font-medium">※ 建議欄位格式順序與系統的「匯出」格式保持一致，以確保資料正確對應。</span>
+                </p>
+                
+                <textarea v-model="pasteContent" 
+                          class="flex-grow w-full border border-gray-300 rounded-lg p-4 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4 whitespace-pre overflow-auto bg-gray-50 shadow-inner" 
+                          placeholder="請在此處貼上您從 Excel 複製的資料..."></textarea>
+                
+                <div class="flex justify-between items-center mt-auto border-t pt-4 border-gray-200">
+                    <div class="flex items-center space-x-6">
+                        <label class="flex items-center cursor-pointer text-gray-700 font-medium">
+                            <input type="radio" v-model="pasteMode" value="append" class="mr-2 w-4 h-4 text-blue-600 focus:ring-blue-500">
+                            附加在現有資料下方
+                        </label>
+                        <label class="flex items-center cursor-pointer text-gray-700 font-medium">
+                            <input type="radio" v-model="pasteMode" value="replace" class="mr-2 w-4 h-4 text-red-600 focus:ring-red-500">
+                            覆蓋當前月份所有資料
+                        </label>
+                    </div>
+                    <div class="space-x-3">
+                        <button @click="closePasteModal" class="px-5 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition font-medium">取消</button>
+                        <button @click="processPaste" class="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-bold shadow-md">確認解析並寫入</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- 系統主畫面 -->
-        <div v-else class="p-6 flex flex-col h-full overflow-hidden relative">
+        <div v-if="isLoggedIn" class="p-6 flex flex-col h-full overflow-hidden relative">
             
             <!-- 雲端同步 Loading 遮罩 -->
             <div v-if="isSyncing" class="absolute inset-0 z-40 bg-white bg-opacity-70 flex items-center justify-center backdrop-blur-sm">
@@ -98,10 +133,17 @@
                     </button>
                     
                     <div class="flex border border-gray-300 rounded-lg shadow-sm overflow-hidden">
+                        <!-- 原有的匯入 -->
                         <label v-if="userRole === 'admin'" class="bg-white text-gray-700 px-3 py-2 hover:bg-gray-50 transition font-medium text-sm cursor-pointer border-r border-gray-300 flex items-center">
-                            <span class="mr-1">📥</span> 匯入
+                            <span class="mr-1">📥</span> 檔案
                             <input type="file" @change="importExcel" accept=".xlsx, .xls" class="hidden">
                         </label>
+
+                        <!-- 新增的批量貼上按鈕 -->
+                        <button v-if="userRole === 'admin'" @click="showPasteModal = true" class="bg-white text-gray-700 px-3 py-2 hover:bg-gray-50 transition font-medium text-sm cursor-pointer border-r border-gray-300 flex items-center">
+                            <span class="mr-1">📋</span> 貼上
+                        </button>
+
                         <button @click="exportExcel" class="bg-white text-gray-700 px-3 py-2 hover:bg-gray-50 transition font-medium text-sm flex items-center" :class="{'rounded-l-lg': userRole === 'viewer'}">
                             <span class="mr-1">📤</span> 匯出
                         </button>
@@ -242,7 +284,6 @@
         createApp({
             data() {
                 return {
-                    // 正確加上單引號，系統恢復正常！
                     gasUrl: 'https://script.google.com/macros/s/AKfycby8xxcqJoPuYN6n86qkPTg-XODajS8uhBYEvymiEIPsfjYCrf5VY1uSRqu8M2vy43118w/exec',
                     
                     isLoggedIn: false,
@@ -254,6 +295,12 @@
                     exchangeRate: 4.8,
                     searchField: 'name',
                     searchQuery: '',
+                    
+                    // 貼上功能相關變數
+                    showPasteModal: false,
+                    pasteContent: '',
+                    pasteMode: 'append', // 'append' 附加 | 'replace' 覆蓋
+
                     activeTabId: 'month-1',
                     tabs: [
                         { id: 'month-1', name: '預設測試表', items: [] }
@@ -296,7 +343,7 @@
             methods: {
                 // 從 Google Sheets 抓取資料
                 fetchFromCloud() {
-                    if (this.gasUrl === '請將您的Google Apps Script網址貼在這裡') return;
+                    if (!this.gasUrl || this.gasUrl === '請將您的Google Apps Script網址貼在這裡') return;
                     
                     this.isSyncing = true;
                     fetch(this.gasUrl)
@@ -304,7 +351,6 @@
                         .then(data => {
                             if (data.tabs && data.tabs.length > 0) {
                                 this.tabs = data.tabs;
-                                // 確保活躍的分頁 ID 是正確的
                                 const tabExists = this.tabs.find(t => t.id === this.activeTabId);
                                 if (!tabExists) this.activeTabId = this.tabs[0].id;
                             }
@@ -317,9 +363,10 @@
                             this.isSyncing = false;
                         });
                 },
+                
                 // 將資料存入 Google Sheets
                 saveToCloud() {
-                    if (this.gasUrl === '請將您的Google Apps Script網址貼在這裡') {
+                    if (!this.gasUrl || this.gasUrl === '請將您的Google Apps Script網址貼在這裡') {
                         alert('請先在原始碼中設定好 Google Apps Script 網址！');
                         return;
                     }
@@ -358,13 +405,13 @@
                         this.userRole = 'admin';
                         this.inputPassword = '';
                         this.loginError = '';
-                        this.fetchFromCloud(); // 登入成功後自動去雲端抓最新資料
+                        this.fetchFromCloud(); 
                     } else if (this.inputPassword === '111111') {
                         this.isLoggedIn = true;
                         this.userRole = 'viewer';
                         this.inputPassword = '';
                         this.loginError = '';
-                        this.fetchFromCloud(); // 檢視者登入也自動抓最新資料
+                        this.fetchFromCloud(); 
                     } else {
                         this.loginError = '密碼錯誤，請重新輸入';
                         this.inputPassword = '';
@@ -373,6 +420,82 @@
                 logout() {
                     this.isLoggedIn = false;
                     this.userRole = null;
+                },
+
+                // 關閉貼上對話框
+                closePasteModal() {
+                    this.showPasteModal = false;
+                    this.pasteContent = '';
+                },
+
+                // 解析並處理貼上的資料
+                processPaste() {
+                    if (!this.pasteContent.trim()) {
+                        alert('您還沒有貼上任何資料！');
+                        return;
+                    }
+
+                    const rows = this.pasteContent.split('\n');
+                    const newItems = [];
+                    
+                    // 協助轉換數字的輔助函式，避免出現 NaN
+                    const parseNum = (val) => {
+                        const n = parseFloat(val);
+                        return isNaN(n) ? '' : n;
+                    };
+
+                    for (let i = 0; i < rows.length; i++) {
+                        const rowText = rows[i].replace(/\r$/, ''); // 清除結尾的斷行字元
+                        if (!rowText.trim()) continue;
+                        
+                        // Excel 複製出來的預設為 Tab (\t) 分隔
+                        const cols = rowText.split('\t');
+                        
+                        // 略過表頭 (如果使用者連標題列一起複製)
+                        if (cols[0] === '基本資料' || cols[0] === '料號/品名') continue;
+                        
+                        // 只要有讀到第一個欄位有資料就建立
+                        if (cols.length >= 1) {
+                            newItems.push({
+                                name: cols[0] || '',
+                                colorSize: cols[1] || '',
+                                supplier: cols[2] || '',
+                                styleNo: cols[3] || '',
+                                exception: cols[4] || '',
+                                estSample: parseNum(cols[5]), 
+                                est1: parseNum(cols[6]),      
+                                est2: parseNum(cols[7]),      
+                                est3: parseNum(cols[8]),      
+                                // index 9 是預估小計，略過即可
+                                actSample: parseNum(cols[10]),
+                                act1: parseNum(cols[11]),     
+                                act2: parseNum(cols[12]),     
+                                act3: parseNum(cols[13]),     
+                                act4: parseNum(cols[14]),     
+                                // index 15 (實際小計), 16 (庫存短溢) 略過
+                                rmbCost: parseNum(cols[17])   
+                            });
+                        }
+                    }
+                    
+                    if (newItems.length === 0) {
+                        alert('解析不到有效的資料，請確認複製的範圍格式是否正確。');
+                        return;
+                    }
+                    
+                    const tab = this.tabs.find(t => t.id === this.activeTabId);
+                    if (tab) {
+                        if (this.pasteMode === 'replace') {
+                            if (confirm(`確定要清除並覆蓋當前月份「${tab.name}」的所有資料嗎？`)) {
+                                tab.items = newItems;
+                                this.closePasteModal();
+                            }
+                        } else {
+                            // 附加在最下面
+                            tab.items.push(...newItems);
+                            this.closePasteModal();
+                        }
+                    }
                 },
 
                 handleTableKeydown(e) {
@@ -556,6 +679,7 @@
                     };
                     reader.readAsArrayBuffer(file);
                 },
+                
                 addTab() {
                     const newMonthName = prompt('請輸入新月份名稱 (例如: 8月連線):', '');
                     if (newMonthName && newMonthName.trim() !== '') {
