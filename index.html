@@ -47,19 +47,18 @@
             </div>
         </div>
 
-        <!-- 系統主畫面 (登入後顯示) -->
+        <!-- 系統主畫面 -->
         <div v-else class="p-6 flex flex-col h-full overflow-hidden">
             <div class="flex justify-between items-end mb-4 flex-shrink-0">
                 <div class="flex flex-col">
                     <div class="flex items-center space-x-3">
                         <h1 class="text-3xl font-bold text-gray-800">MOOD 服飾庫存管理系統</h1>
-                        <!-- 顯示當前權限狀態與登出按鈕 -->
                         <span class="text-xs font-bold px-2 py-1 rounded shadow-sm" :class="userRole === 'admin' ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-green-100 text-green-700 border border-green-200'">
                             {{ userRole === 'admin' ? '編輯模式' : '檢視模式' }}
                         </span>
                         <button @click="logout" class="text-xs text-gray-400 hover:text-gray-800 underline transition-colors">登出</button>
                     </div>
-                    <p class="text-sm text-gray-500 mt-2">每月進貨數量與庫存價值 (自動存檔版)</p>
+                    <p class="text-sm text-gray-500 mt-2">每月進貨數量與庫存價值 (支援鍵盤方向鍵操作)</p>
                 </div>
                 
                 <div class="flex items-center space-x-3">
@@ -89,7 +88,6 @@
                             <span class="mr-1">📥</span> 匯入
                             <input type="file" @change="importExcel" accept=".xlsx, .xls" class="hidden">
                         </label>
-                        <!-- 檢視者也可以匯出報表 -->
                         <button @click="exportExcel" class="bg-white text-gray-700 px-3 py-2 hover:bg-gray-50 transition font-medium text-sm flex items-center" :class="{'rounded-l-lg': userRole === 'viewer'}">
                             <span class="mr-1">📤</span> 匯出
                         </button>
@@ -133,7 +131,6 @@
                             <th colspan="5" class="px-3 py-2 border-r border-b font-semibold text-blue-800 bg-blue-100">預估進貨 (數量)</th>
                             <th colspan="6" class="px-3 py-2 border-r border-b font-semibold text-green-800 bg-green-100">實際進貨 (數量)</th>
                             <th colspan="4" class="px-3 py-2 border-r border-b font-semibold text-purple-800 bg-purple-100">庫存與成本盤點</th>
-                            <!-- 只有管理員才顯示操作欄位 -->
                             <th v-if="userRole === 'admin'" rowspan="2" class="px-3 py-2 border-b font-semibold text-gray-700 bg-gray-200 align-middle">操作</th>
                         </tr>
                         <tr class="text-xs text-gray-600">
@@ -162,14 +159,14 @@
                             <th class="px-2 py-2 border-r border-b bg-purple-200 font-bold text-purple-900">庫存存值(台幣)</th>
                         </tr>
                     </thead>
-                    <tbody class="bg-white divide-y divide-gray-200">
+                    <!-- 新增：加入 @keydown="handleTableKeydown" 監聽整個表格的鍵盤操作 -->
+                    <tbody class="bg-white divide-y divide-gray-200" @keydown="handleTableKeydown">
                         <tr v-if="filteredItems.length === 0">
                             <td :colspan="userRole === 'admin' ? 21 : 20" class="p-8 text-center text-gray-500">
                                 {{ searchQuery ? '🔍 找不到符合「' + searchQuery + '」的資料' : '目前無資料' }}
                             </td>
                         </tr>
                         <tr v-for="(item, index) in filteredItems" :key="index" class="hover:bg-gray-50 transition-colors group">
-                            <!-- 根據權限決定欄位是否為唯讀 -->
                             <td class="p-1 border-r"><input type="text" v-model="item.name" :readonly="userRole === 'viewer'" class="w-64 text-center border-b border-transparent bg-transparent outline-none p-1" :class="userRole === 'viewer' ? 'cursor-default' : 'focus:border-gray-400'"></td>
                             <td class="p-1 border-r"><input type="text" v-model="item.colorSize" :readonly="userRole === 'viewer'" class="w-16 text-center border-b border-transparent bg-transparent outline-none p-1" :class="userRole === 'viewer' ? 'cursor-default' : 'focus:border-gray-400'"></td>
                             <td class="p-1 border-r"><input type="text" v-model="item.supplier" :readonly="userRole === 'viewer'" class="w-16 text-center border-b border-transparent bg-transparent outline-none p-1" :class="userRole === 'viewer' ? 'cursor-default' : 'focus:border-gray-400'"></td>
@@ -232,9 +229,8 @@
         createApp({
             data() {
                 return {
-                    // 權限與登入狀態
                     isLoggedIn: false,
-                    userRole: null, // 'admin' 或 'viewer'
+                    userRole: null, 
                     inputPassword: '',
                     loginError: '',
 
@@ -248,7 +244,6 @@
                 }
             },
             mounted() {
-                // 嘗試讀取存檔
                 const savedTabs = localStorage.getItem('moodInventoryTabs');
                 const savedRate = localStorage.getItem('moodExchangeRate');
                 
@@ -311,7 +306,78 @@
                 }
             },
             methods: {
-                // 登入邏輯
+                // 新增：方向鍵移動儲存格核心邏輯
+                handleTableKeydown(e) {
+                    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+
+                    const target = e.target;
+                    if (target.tagName !== 'INPUT' && target.tagName !== 'SELECT') return;
+
+                    // 防呆：如果在輸入框內按左右鍵，先確認是否需要保留原生文字游標移動
+                    if (target.tagName === 'INPUT' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+                        try {
+                            if (e.key === 'ArrowLeft' && target.selectionStart > 0) return;
+                            const valLen = (target.value || '').toString().length;
+                            if (e.key === 'ArrowRight' && target.selectionEnd !== null && target.selectionEnd < valLen) return;
+                        } catch(err) {
+                            // 部分瀏覽器對 number input 的 selection 支援度不同，若報錯則直接切換儲存格
+                        }
+                    }
+
+                    const td = target.closest('td');
+                    const tr = td.closest('tr');
+                    if (!td || !tr) return;
+
+                    const tds = Array.from(tr.children);
+                    const cellIndex = tds.indexOf(td);
+                    let nextTarget = null;
+
+                    if (e.key === 'ArrowUp') {
+                        e.preventDefault(); // 避免畫面跟著捲動
+                        const prevTr = tr.previousElementSibling;
+                        if (prevTr) {
+                            const targetTd = prevTr.children[cellIndex];
+                            if (targetTd) nextTarget = targetTd.querySelector('input:not([readonly]), select:not([disabled])');
+                        }
+                    } else if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        const nextTr = tr.nextElementSibling;
+                        if (nextTr) {
+                            const targetTd = nextTr.children[cellIndex];
+                            if (targetTd) nextTarget = targetTd.querySelector('input:not([readonly]), select:not([disabled])');
+                        }
+                    } else if (e.key === 'ArrowLeft') {
+                        let curr = td.previousElementSibling;
+                        while (curr) {
+                            let el = curr.querySelector('input:not([readonly]), select:not([disabled])');
+                            if (el) {
+                                nextTarget = el;
+                                break;
+                            }
+                            curr = curr.previousElementSibling;
+                        }
+                    } else if (e.key === 'ArrowRight') {
+                        let curr = td.nextElementSibling;
+                        while (curr) {
+                            let el = curr.querySelector('input:not([readonly]), select:not([disabled])');
+                            if (el) {
+                                nextTarget = el;
+                                break;
+                            }
+                            curr = curr.nextElementSibling;
+                        }
+                    }
+
+                    // 找到目標後，自動對焦並全選文字方便直接覆寫
+                    if (nextTarget) {
+                        e.preventDefault();
+                        nextTarget.focus();
+                        if(nextTarget.tagName === 'INPUT') {
+                            nextTarget.select();
+                        }
+                    }
+                },
+
                 login() {
                     if (this.inputPassword === '123458') {
                         this.isLoggedIn = true;
@@ -328,7 +394,6 @@
                         this.inputPassword = '';
                     }
                 },
-                // 登出邏輯
                 logout() {
                     this.isLoggedIn = false;
                     this.userRole = null;
