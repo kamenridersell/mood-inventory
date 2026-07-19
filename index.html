@@ -343,7 +343,7 @@
             methods: {
                 // 從 Google Sheets 抓取資料
                 fetchFromCloud() {
-                    if (!this.gasUrl || this.gasUrl === 'https://script.google.com/macros/s/AKfycbyp7JQ-kbKVF1eqXJ6wMplD8ckqQez7r5aGl12_JswvTUpRsa4wblNIEXqIMlMVie6Cog/exec') return;
+                    if (!this.gasUrl || this.gasUrl === '') return;
                     
                     this.isSyncing = true;
                     fetch(this.gasUrl)
@@ -366,7 +366,7 @@
                 
                 // 將資料存入 Google Sheets
                 saveToCloud() {
-                    if (!this.gasUrl || this.gasUrl === 'https://script.google.com/macros/s/AKfycbyp7JQ-kbKVF1eqXJ6wMplD8ckqQez7r5aGl12_JswvTUpRsa4wblNIEXqIMlMVie6Cog/exec') {
+                    if (!this.gasUrl || this.gasUrl === '') {
                         alert('請先在原始碼中設定好 Google Apps Script 網址！');
                         return;
                     }
