@@ -30,11 +30,11 @@
 <body class="bg-gray-100 p-6 h-screen flex flex-col">
     <div id="app" class="w-full mx-auto bg-white rounded-lg shadow-md flex flex-col flex-grow overflow-hidden relative">
         
-        <!-- 登入遮罩畫面 -->
+        <!-- 登入畫面 -->
         <div v-if="!isLoggedIn" class="absolute inset-0 z-50 flex items-center justify-center bg-gray-900 bg-opacity-60 backdrop-blur-sm rounded-lg">
             <div class="bg-white p-10 rounded-2xl shadow-2xl w-96 max-w-full text-center">
                 <h2 class="text-3xl font-bold text-gray-800 mb-2 tracking-wide">MOOD</h2>
-                <p class="text-gray-500 text-sm mb-8">服飾庫存管理系統</p>
+                <p class="text-gray-500 text-sm mb-8">服飾庫存管理系統 (雲端版)</p>
                 
                 <input type="password" v-model="inputPassword" @keyup.enter="login" 
                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-800 mb-6 text-center text-xl tracking-widest shadow-inner" 
@@ -48,7 +48,16 @@
         </div>
 
         <!-- 系統主畫面 -->
-        <div v-else class="p-6 flex flex-col h-full overflow-hidden">
+        <div v-else class="p-6 flex flex-col h-full overflow-hidden relative">
+            
+            <!-- 雲端同步 Loading 遮罩 -->
+            <div v-if="isSyncing" class="absolute inset-0 z-40 bg-white bg-opacity-70 flex items-center justify-center backdrop-blur-sm">
+                <div class="text-center">
+                    <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mb-2"></div>
+                    <p class="text-gray-700 font-bold">與雲端同步中，請稍候...</p>
+                </div>
+            </div>
+
             <div class="flex justify-between items-end mb-4 flex-shrink-0">
                 <div class="flex flex-col">
                     <div class="flex items-center space-x-3">
@@ -58,7 +67,7 @@
                         </span>
                         <button @click="logout" class="text-xs text-gray-400 hover:text-gray-800 underline transition-colors">登出</button>
                     </div>
-                    <p class="text-sm text-gray-500 mt-2">每月進貨數量與庫存價值 (支援鍵盤方向鍵操作)</p>
+                    <p class="text-sm text-gray-500 mt-2">每月進貨數量與庫存價值 (Google Sheets 雲端連線版)</p>
                 </div>
                 
                 <div class="flex items-center space-x-3">
@@ -82,6 +91,11 @@
                                class="w-16 text-center font-bold text-blue-700 border border-blue-200 rounded p-1 focus:outline-none focus:ring-2 focus:ring-blue-400"
                                :class="userRole === 'viewer' ? 'bg-transparent cursor-default' : 'bg-white'">
                     </div>
+
+                    <!-- 雲端儲存按鈕 -->
+                    <button v-if="userRole === 'admin'" @click="saveToCloud" class="bg-blue-600 text-white px-4 py-2 rounded-lg shadow hover:bg-blue-700 transition font-medium text-sm flex items-center">
+                        <span class="mr-1">☁️</span> 儲存至雲端
+                    </button>
                     
                     <div class="flex border border-gray-300 rounded-lg shadow-sm overflow-hidden">
                         <label v-if="userRole === 'admin'" class="bg-white text-gray-700 px-3 py-2 hover:bg-gray-50 transition font-medium text-sm cursor-pointer border-r border-gray-300 flex items-center">
@@ -159,7 +173,6 @@
                             <th class="px-2 py-2 border-r border-b bg-purple-200 font-bold text-purple-900">庫存存值(台幣)</th>
                         </tr>
                     </thead>
-                    <!-- 新增：加入 @keydown="handleTableKeydown" 監聽整個表格的鍵盤操作 -->
                     <tbody class="bg-white divide-y divide-gray-200" @keydown="handleTableKeydown">
                         <tr v-if="filteredItems.length === 0">
                             <td :colspan="userRole === 'admin' ? 21 : 20" class="p-8 text-center text-gray-500">
@@ -229,7 +242,11 @@
         createApp({
             data() {
                 return {
+                    // 👇👇👇 請在這裡貼上您剛剛取得的 Google Apps Script 網址 👇👇👇
+                    gasUrl:https://script.google.com/macros/s/AKfycby8xxcqJoPuYN6n86qkPTg-XODajS8uhBYEvymiEIPsfjYCrf5VY1uSRqu8M2vy43118w/exec
+                    
                     isLoggedIn: false,
+                    isSyncing: false, // 控制載入畫面的變數
                     userRole: null, 
                     inputPassword: '',
                     loginError: '',
@@ -239,37 +256,8 @@
                     searchQuery: '',
                     activeTabId: 'month-1',
                     tabs: [
-                        { id: 'month-1', name: '空白測試表', items: [] }
+                        { id: 'month-1', name: '預設測試表', items: [] }
                     ]
-                }
-            },
-            mounted() {
-                const savedTabs = localStorage.getItem('moodInventoryTabs');
-                const savedRate = localStorage.getItem('moodExchangeRate');
-                
-                if (savedTabs) {
-                    try {
-                        this.tabs = JSON.parse(savedTabs);
-                        if (this.tabs.length > 0) {
-                            this.activeTabId = this.tabs[0].id;
-                        }
-                    } catch (e) {
-                        console.error('讀取存檔失敗', e);
-                    }
-                }
-                if (savedRate) {
-                    this.exchangeRate = parseFloat(savedRate);
-                }
-            },
-            watch: {
-                tabs: {
-                    handler(newTabs) {
-                        localStorage.setItem('moodInventoryTabs', JSON.stringify(newTabs));
-                    },
-                    deep: true
-                },
-                exchangeRate(newRate) {
-                    localStorage.setItem('moodExchangeRate', newRate);
                 }
             },
             computed: {
@@ -306,22 +294,100 @@
                 }
             },
             methods: {
-                // 新增：方向鍵移動儲存格核心邏輯
+                // 從 Google Sheets 抓取資料
+                fetchFromCloud() {
+                    if (this.gasUrl === '請將您的Google Apps Script網址貼在這裡') return;
+                    
+                    this.isSyncing = true;
+                    fetch(this.gasUrl)
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.tabs && data.tabs.length > 0) {
+                                this.tabs = data.tabs;
+                                // 確保活躍的分頁 ID 是正確的
+                                const tabExists = this.tabs.find(t => t.id === this.activeTabId);
+                                if (!tabExists) this.activeTabId = this.tabs[0].id;
+                            }
+                            if (data.exchangeRate) {
+                                this.exchangeRate = data.exchangeRate;
+                            }
+                        })
+                        .catch(error => console.error('讀取雲端資料失敗:', error))
+                        .finally(() => {
+                            this.isSyncing = false;
+                        });
+                },
+                // 將資料存入 Google Sheets
+                saveToCloud() {
+                    if (this.gasUrl === '請將您的Google Apps Script網址貼在這裡') {
+                        alert('請先在原始碼中設定好 Google Apps Script 網址！');
+                        return;
+                    }
+
+                    this.isSyncing = true;
+                    fetch(this.gasUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'text/plain;charset=utf-8',
+                        },
+                        body: JSON.stringify({
+                            tabs: this.tabs,
+                            exchangeRate: this.exchangeRate
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            // 加上短暫延遲讓使用者看到成功狀態
+                            setTimeout(() => {
+                                alert('雲端儲存成功！');
+                            }, 300);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('雲端儲存失敗:', error);
+                        alert('儲存失敗，請檢查網路連線。');
+                    })
+                    .finally(() => {
+                        this.isSyncing = false;
+                    });
+                },
+
+                login() {
+                    if (this.inputPassword === '123458') {
+                        this.isLoggedIn = true;
+                        this.userRole = 'admin';
+                        this.inputPassword = '';
+                        this.loginError = '';
+                        this.fetchFromCloud(); // 登入成功後自動去雲端抓最新資料
+                    } else if (this.inputPassword === '111111') {
+                        this.isLoggedIn = true;
+                        this.userRole = 'viewer';
+                        this.inputPassword = '';
+                        this.loginError = '';
+                        this.fetchFromCloud(); // 檢視者登入也自動抓最新資料
+                    } else {
+                        this.loginError = '密碼錯誤，請重新輸入';
+                        this.inputPassword = '';
+                    }
+                },
+                logout() {
+                    this.isLoggedIn = false;
+                    this.userRole = null;
+                },
+
                 handleTableKeydown(e) {
                     if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
 
                     const target = e.target;
                     if (target.tagName !== 'INPUT' && target.tagName !== 'SELECT') return;
 
-                    // 防呆：如果在輸入框內按左右鍵，先確認是否需要保留原生文字游標移動
                     if (target.tagName === 'INPUT' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
                         try {
                             if (e.key === 'ArrowLeft' && target.selectionStart > 0) return;
                             const valLen = (target.value || '').toString().length;
                             if (e.key === 'ArrowRight' && target.selectionEnd !== null && target.selectionEnd < valLen) return;
-                        } catch(err) {
-                            // 部分瀏覽器對 number input 的 selection 支援度不同，若報錯則直接切換儲存格
-                        }
+                        } catch(err) {}
                     }
 
                     const td = target.closest('td');
@@ -333,7 +399,7 @@
                     let nextTarget = null;
 
                     if (e.key === 'ArrowUp') {
-                        e.preventDefault(); // 避免畫面跟著捲動
+                        e.preventDefault();
                         const prevTr = tr.previousElementSibling;
                         if (prevTr) {
                             const targetTd = prevTr.children[cellIndex];
@@ -368,7 +434,6 @@
                         }
                     }
 
-                    // 找到目標後，自動對焦並全選文字方便直接覆寫
                     if (nextTarget) {
                         e.preventDefault();
                         nextTarget.focus();
@@ -376,27 +441,6 @@
                             nextTarget.select();
                         }
                     }
-                },
-
-                login() {
-                    if (this.inputPassword === '123458') {
-                        this.isLoggedIn = true;
-                        this.userRole = 'admin';
-                        this.inputPassword = '';
-                        this.loginError = '';
-                    } else if (this.inputPassword === '111111') {
-                        this.isLoggedIn = true;
-                        this.userRole = 'viewer';
-                        this.inputPassword = '';
-                        this.loginError = '';
-                    } else {
-                        this.loginError = '密碼錯誤，請重新輸入';
-                        this.inputPassword = '';
-                    }
-                },
-                logout() {
-                    this.isLoggedIn = false;
-                    this.userRole = null;
                 },
 
                 estTotal(item) { return (item.estSample||0) + (item.est1||0) + (item.est2||0) + (item.est3||0); },
