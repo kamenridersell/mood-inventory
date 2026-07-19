@@ -120,9 +120,10 @@
                         </div>
                     </div>
                     
-                    <div class="bg-blue-50 p-2 rounded-lg border border-blue-100 flex items-center shadow-sm">
+                    <!-- 獨立匯率輸入框：現在綁定到各自分頁 (currentTab) -->
+                    <div v-if="currentTab" class="bg-blue-50 p-2 rounded-lg border border-blue-100 flex items-center shadow-sm">
                         <label class="text-sm font-medium text-blue-800 mr-2">匯率 (RMB/NTD)</label>
-                        <input type="number" step="0.1" v-model.number="exchangeRate" :readonly="userRole === 'viewer'"
+                        <input type="number" step="0.1" v-model.number="currentTab.exchangeRate" :readonly="userRole === 'viewer'"
                                class="w-16 text-center font-bold text-blue-700 border border-blue-200 rounded p-1 focus:outline-none focus:ring-2 focus:ring-blue-400"
                                :class="userRole === 'viewer' ? 'bg-transparent cursor-default' : 'bg-white'">
                     </div>
@@ -284,7 +285,7 @@
         createApp({
             data() {
                 return {
-                    gasUrl: 'https://script.google.com/macros/s/AKfycbyp7JQ-kbKVF1eqXJ6wMplD8ckqQez7r5aGl12_JswvTUpRsa4wblNIEXqIMlMVie6Cog/exec',
+                    gasUrl: 'https://script.google.com/macros/s/AKfycbzzUsW9ZSYQbvqKG6iyUxB4-RLAnK4zIJ3nlsvUWNt9jCSNxTME6zPo4PX5XssOi8x2uw/exec',
                     
                     isLoggedIn: false,
                     isSyncing: false, 
@@ -292,25 +293,25 @@
                     inputPassword: '',
                     loginError: '',
 
-                    exchangeRate: 4.8,
                     searchField: 'name',
                     searchQuery: '',
                     
-                    // 貼上功能相關變數
                     showPasteModal: false,
                     pasteContent: '',
-                    pasteMode: 'append', // 'append' 附加 | 'replace' 覆蓋
+                    pasteMode: 'append', 
 
                     activeTabId: 'month-1',
                     tabs: [
-                        { id: 'month-1', name: '預設測試表', items: [] }
+                        { id: 'month-1', name: '預設測試表', exchangeRate: 4.8, items: [] }
                     ]
                 }
             },
             computed: {
+                currentTab() {
+                    return this.tabs.find(t => t.id === this.activeTabId) || null;
+                },
                 currentItems() {
-                    const tab = this.tabs.find(t => t.id === this.activeTabId);
-                    return tab ? tab.items : [];
+                    return this.currentTab ? this.currentTab.items : [];
                 },
                 searchFieldText() {
                     const map = { name: '料號/品名', supplier: '供應商', styleNo: '款號' };
@@ -341,9 +342,8 @@
                 }
             },
             methods: {
-                // 從 Google Sheets 抓取資料
                 fetchFromCloud() {
-                    if (!this.gasUrl || this.gasUrl === '') return;
+                    if (!this.gasUrl || this.gasUrl === '' || this.gasUrl.includes('請將您的')) return;
                     
                     this.isSyncing = true;
                     fetch(this.gasUrl)
@@ -354,9 +354,6 @@
                                 const tabExists = this.tabs.find(t => t.id === this.activeTabId);
                                 if (!tabExists) this.activeTabId = this.tabs[0].id;
                             }
-                            if (data.exchangeRate) {
-                                this.exchangeRate = data.exchangeRate;
-                            }
                         })
                         .catch(error => console.error('讀取雲端資料失敗:', error))
                         .finally(() => {
@@ -364,9 +361,8 @@
                         });
                 },
                 
-                // 將資料存入 Google Sheets
                 saveToCloud() {
-                    if (!this.gasUrl || this.gasUrl === '') {
+                    if (!this.gasUrl || this.gasUrl === '' || this.gasUrl.includes('請將您的')) {
                         alert('請先在原始碼中設定好 Google Apps Script 網址！');
                         return;
                     }
@@ -378,8 +374,7 @@
                             'Content-Type': 'text/plain;charset=utf-8',
                         },
                         body: JSON.stringify({
-                            tabs: this.tabs,
-                            exchangeRate: this.exchangeRate
+                            tabs: this.tabs
                         })
                     })
                     .then(response => response.json())
@@ -422,13 +417,11 @@
                     this.userRole = null;
                 },
 
-                // 關閉貼上對話框
                 closePasteModal() {
                     this.showPasteModal = false;
                     this.pasteContent = '';
                 },
 
-                // 解析並處理貼上的資料
                 processPaste() {
                     if (!this.pasteContent.trim()) {
                         alert('您還沒有貼上任何資料！');
@@ -438,23 +431,18 @@
                     const rows = this.pasteContent.split('\n');
                     const newItems = [];
                     
-                    // 協助轉換數字的輔助函式，避免出現 NaN
                     const parseNum = (val) => {
                         const n = parseFloat(val);
                         return isNaN(n) ? '' : n;
                     };
 
                     for (let i = 0; i < rows.length; i++) {
-                        const rowText = rows[i].replace(/\r$/, ''); // 清除結尾的斷行字元
+                        const rowText = rows[i].replace(/\r$/, ''); 
                         if (!rowText.trim()) continue;
                         
-                        // Excel 複製出來的預設為 Tab (\t) 分隔
                         const cols = rowText.split('\t');
-                        
-                        // 略過表頭 (如果使用者連標題列一起複製)
                         if (cols[0] === '基本資料' || cols[0] === '料號/品名') continue;
                         
-                        // 只要有讀到第一個欄位有資料就建立
                         if (cols.length >= 1) {
                             newItems.push({
                                 name: cols[0] || '',
@@ -466,13 +454,11 @@
                                 est1: parseNum(cols[6]),      
                                 est2: parseNum(cols[7]),      
                                 est3: parseNum(cols[8]),      
-                                // index 9 是預估小計，略過即可
                                 actSample: parseNum(cols[10]),
                                 act1: parseNum(cols[11]),     
                                 act2: parseNum(cols[12]),     
                                 act3: parseNum(cols[13]),     
                                 act4: parseNum(cols[14]),     
-                                // index 15 (實際小計), 16 (庫存短溢) 略過
                                 rmbCost: parseNum(cols[17])   
                             });
                         }
@@ -483,16 +469,14 @@
                         return;
                     }
                     
-                    const tab = this.tabs.find(t => t.id === this.activeTabId);
-                    if (tab) {
+                    if (this.currentTab) {
                         if (this.pasteMode === 'replace') {
-                            if (confirm(`確定要清除並覆蓋當前月份「${tab.name}」的所有資料嗎？`)) {
-                                tab.items = newItems;
+                            if (confirm(`確定要清除並覆蓋當前月份「${this.currentTab.name}」的所有資料嗎？`)) {
+                                this.currentTab.items = newItems;
                                 this.closePasteModal();
                             }
                         } else {
-                            // 附加在最下面
-                            tab.items.push(...newItems);
+                            this.currentTab.items.push(...newItems);
                             this.closePasteModal();
                         }
                     }
@@ -568,7 +552,11 @@
                 estTotal(item) { return (item.estSample||0) + (item.est1||0) + (item.est2||0) + (item.est3||0); },
                 actTotal(item) { return (item.actSample||0) + (item.act1||0) + (item.act2||0) + (item.act3||0) + (item.act4||0); },
                 discrepancy(item) { return this.actTotal(item) - this.estTotal(item); },
-                ntdCost(item) { return (item.rmbCost||0) * this.exchangeRate; },
+                // 匯率計算：動態抓取當前分頁的專屬匯率
+                ntdCost(item) { 
+                    const rate = this.currentTab ? (this.currentTab.exchangeRate || 4.8) : 4.8;
+                    return (item.rmbCost||0) * rate; 
+                },
                 invValue(item) { return this.ntdCost(item) * Math.max(0, this.actTotal(item)); },
 
                 dispEstTotal(item) { const v = this.estTotal(item); return v === 0 ? '' : v; },
@@ -610,7 +598,7 @@
 
                     const worksheet = XLSX.utils.json_to_sheet(exportData);
                     const workbook = XLSX.utils.book_new();
-                    const tab = this.tabs.find(t => t.id === this.activeTabId);
+                    const tab = this.currentTab;
                     
                     let safeSheetName = (tab ? tab.name : 'Sheet1').replace(/[\\/?*\[\]]/g, '').substring(0, 31);
                     XLSX.utils.book_append_sheet(workbook, worksheet, safeSheetName);
@@ -670,6 +658,7 @@
                                 this.tabs.push({
                                     id: newId,
                                     name: sheetName,
+                                    exchangeRate: 4.8, // 新匯入的分頁預設匯率
                                     items: newItems
                                 });
                                 this.activeTabId = newId; 
@@ -687,6 +676,7 @@
                         this.tabs.push({
                             id: newId,
                             name: newMonthName.trim(),
+                            exchangeRate: 4.8, // 新增分頁預設匯率
                             items: []
                         });
                         this.activeTabId = newId;
@@ -719,18 +709,16 @@
                     }
                 },
                 addRow() {
-                    const tab = this.tabs.find(t => t.id === this.activeTabId);
-                    if (tab) {
-                        tab.items.push({ name: '', colorSize: '', supplier: '', styleNo: '', exception: '', estSample: '', est1: '', est2: '', est3: '', actSample: '', act1: '', act2: '', act3: '', act4: '', rmbCost: '' });
+                    if (this.currentTab) {
+                        this.currentTab.items.push({ name: '', colorSize: '', supplier: '', styleNo: '', exception: '', estSample: '', est1: '', est2: '', est3: '', actSample: '', act1: '', act2: '', act3: '', act4: '', rmbCost: '' });
                         this.searchQuery = ''; 
                     }
                 },
                 removeRow(item) {
-                    const tab = this.tabs.find(t => t.id === this.activeTabId);
-                    if (tab && confirm('確定要刪除這筆料號嗎？此動作無法復原。')) {
-                        const index = tab.items.indexOf(item);
+                    if (this.currentTab && confirm('確定要刪除這筆料號嗎？此動作無法復原。')) {
+                        const index = this.currentTab.items.indexOf(item);
                         if (index !== -1) {
-                            tab.items.splice(index, 1);
+                            this.currentTab.items.splice(index, 1);
                         }
                     }
                 }
