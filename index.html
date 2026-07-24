@@ -25,6 +25,18 @@
         
         tfoot { position: sticky; bottom: 0; z-index: 30; }
         tfoot::before { content: ''; position: absolute; left: 0; right: 0; top: 0; border-top: 2px solid #d1d5db; pointer-events: none; }
+
+        /* 滑鼠移動到儲存格時，顯示明顯的藍色框框 */
+        tbody td:hover {
+            box-shadow: inset 0 0 0 2px #3b82f6;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* 目前選取的料號列，給予淡藍色底色提示 */
+        tbody tr.row-selected {
+            background-color: #eff6ff;
+        }
     </style>
 </head>
 <body class="bg-gray-100 p-6 h-screen flex flex-col">
@@ -160,7 +172,7 @@
                              activeTabId === tab.id ? 'bg-white text-blue-700 border-gray-300 shadow-[0_2px_0_0_white]' : 'bg-gray-100 text-gray-500 border-transparent hover:bg-gray-200 cursor-pointer']"
                      style="margin-bottom: -1px;">
                     
-                    <button @click="activeTabId = tab.id; searchQuery = ''" class="pl-4 pr-2 py-2.5 text-sm font-medium focus:outline-none" :class="{'pr-4': userRole === 'viewer'}">
+                    <button @click="activeTabId = tab.id; searchQuery = ''; selectedItem = null" class="pl-4 pr-2 py-2.5 text-sm font-medium focus:outline-none" :class="{'pr-4': userRole === 'viewer'}">
                         {{ tab.name }}
                     </button>
                     
@@ -222,7 +234,8 @@
                                 {{ searchQuery ? '🔍 找不到符合「' + searchQuery + '」的資料' : '目前無資料' }}
                             </td>
                         </tr>
-                        <tr v-for="(item, index) in filteredItems" :key="index" class="hover:bg-gray-50 transition-colors group">
+                        <tr v-for="(item, index) in filteredItems" :key="index" @click="selectRow(item)"
+                            class="hover:bg-gray-50 transition-colors group" :class="{'row-selected': selectedItem === item}">
                             <td class="p-1 border-r"><input type="text" v-model="item.name" :readonly="userRole === 'viewer'" class="w-64 text-center border-b border-transparent bg-transparent outline-none p-1" :class="userRole === 'viewer' ? 'cursor-default' : 'focus:border-gray-400'"></td>
                             <td class="p-1 border-r"><input type="text" v-model="item.colorSize" :readonly="userRole === 'viewer'" class="w-16 text-center border-b border-transparent bg-transparent outline-none p-1" :class="userRole === 'viewer' ? 'cursor-default' : 'focus:border-gray-400'"></td>
                             <td class="p-1 border-r"><input type="text" v-model="item.supplier" :readonly="userRole === 'viewer'" class="w-16 text-center border-b border-transparent bg-transparent outline-none p-1" :class="userRole === 'viewer' ? 'cursor-default' : 'focus:border-gray-400'"></td>
@@ -260,7 +273,7 @@
                             <td class="p-1 border-r bg-purple-100 font-bold text-purple-900">{{ dispInvValue(item) }}</td>
                             
                             <td v-if="userRole === 'admin'" class="p-1 text-center bg-gray-50">
-                                <button @click="removeRow(item)" class="text-red-500 hover:text-white hover:bg-red-500 border border-red-500 px-2 py-1 rounded text-xs transition-colors shadow-sm focus:outline-none">
+                                <button @click.stop="removeRow(item)" class="text-red-500 hover:text-white hover:bg-red-500 border border-red-500 px-2 py-1 rounded text-xs transition-colors shadow-sm focus:outline-none">
                                     刪除
                                 </button>
                             </td>
@@ -303,7 +316,9 @@
                     activeTabId: 'month-1',
                     tabs: [
                         { id: 'month-1', name: '預設測試表', exchangeRate: 4.8, items: [] }
-                    ]
+                    ],
+
+                    selectedItem: null // 目前點選的料號 (整列)
                 }
             },
             computed: {
@@ -473,6 +488,7 @@
                         if (this.pasteMode === 'replace') {
                             if (confirm(`確定要清除並覆蓋當前月份「${this.currentTab.name}」的所有資料嗎？`)) {
                                 this.currentTab.items = newItems;
+                                this.selectedItem = null;
                                 this.closePasteModal();
                             }
                         } else {
@@ -664,6 +680,7 @@
                                 this.activeTabId = newId; 
                             }
                         });
+                        this.selectedItem = null;
                         event.target.value = '';
                     };
                     reader.readAsArrayBuffer(file);
@@ -681,6 +698,7 @@
                         });
                         this.activeTabId = newId;
                         this.searchQuery = ''; 
+                        this.selectedItem = null;
                     }
                 },
                 renameTab(tabId) {
@@ -705,12 +723,27 @@
                                 this.activeTabId = this.tabs[0].id;
                                 this.searchQuery = '';
                             }
+                            this.selectedItem = null;
                         }
                     }
                 },
+                selectRow(item) {
+                    this.selectedItem = item;
+                },
                 addRow() {
                     if (this.currentTab) {
-                        this.currentTab.items.push({ name: '', colorSize: '', supplier: '', styleNo: '', exception: '', estSample: '', est1: '', est2: '', est3: '', actSample: '', act1: '', act2: '', act3: '', act4: '', rmbCost: '' });
+                        const newItem = { name: '', colorSize: '', supplier: '', styleNo: '', exception: '', estSample: '', est1: '', est2: '', est3: '', actSample: '', act1: '', act2: '', act3: '', act4: '', rmbCost: '' };
+                        const items = this.currentTab.items;
+
+                        // 若目前有選取的料號，且該料號存在於這個分頁中，就新增在它的下方；否則新增到最後面
+                        const selectedIndex = this.selectedItem ? items.indexOf(this.selectedItem) : -1;
+                        if (selectedIndex !== -1) {
+                            items.splice(selectedIndex + 1, 0, newItem);
+                        } else {
+                            items.push(newItem);
+                        }
+
+                        this.selectedItem = newItem; // 讓新增的這列成為目前選取的料號，方便連續往下新增
                         this.searchQuery = ''; 
                     }
                 },
@@ -719,6 +752,9 @@
                         const index = this.currentTab.items.indexOf(item);
                         if (index !== -1) {
                             this.currentTab.items.splice(index, 1);
+                        }
+                        if (this.selectedItem === item) {
+                            this.selectedItem = null;
                         }
                     }
                 }
